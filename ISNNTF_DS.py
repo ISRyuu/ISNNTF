@@ -36,16 +36,19 @@ class ISNNLayer(object):
     def accuracy(self, y):
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def y_out(self):
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def output(self):
         # output in one-hot.
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def parameters(self):
         # structure: [weights, biases]
         pass
