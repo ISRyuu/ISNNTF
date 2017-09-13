@@ -10,13 +10,15 @@
 # 2017/8/15
 # Kevin
 
-import os, time, select, socket, signal
+import os, time, select, signal
 import tensorflow as tf
 import numpy as np
-from abc import ABCMeta, abstractmethod, abstractproperty
-from convert_to_tfrecords import read_minst_from_tfrecords
+from abc import ABCMeta, abstractmethod
 import tensorflow.contrib.data as tdata
 from convert_to_tfrecords import parse_function_maker
+
+from tensorflow.python.client import timeline
+from merge_tracing import *
 
 _IS_MSG_INFORM = b'0'
 _IS_MSG_SHUTDOWN = b'1'
@@ -73,9 +75,9 @@ class ISTFNN(object):
         with tf.variable_scope('input'):
             self.input_file_placeholder = tf.placeholder(dtype=tf.string, name='input_file')
             dataset = tdata.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
-            dataset = dataset.map(parse_func)
             # i.e.: Don't repeat.
             dataset = dataset.repeat(1)
+            dataset = dataset.map(parse_func, num_threads=2, output_buffer_size=self.mbs*10)
             # must set batch size before setting filter.
             dataset = dataset.shuffle(buffer_size=self.mbs*10)
             dataset = dataset.batch(self.mbs)
@@ -188,12 +190,17 @@ class ISTFNN(object):
         saver = tf.train.Saver()
         with tf.Session() as sess:
 
+            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            # run_metadata = tf.RunMetadata()
+            # many_runs_timeline = TimeLiner()
+
             # visualization data
             tf.summary.scalar('cost', cost)
             merged = tf.summary.merge_all()
             train_writer = tf.summary.FileWriter('training_log', sess.graph)
 
             init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+
             sess.run(init)
 
             steps = 0
@@ -210,17 +217,23 @@ class ISTFNN(object):
                         else:
                             feed_dict = None
                         summary, _ = sess.run([merged, trainer], feed_dict=feed_dict)
+
                         train_writer.add_summary(summary, steps)
-                        if steps % period == 0:
+                        # tl = timeline.Timeline(run_metadata.step_stats)
+                        # ctf = tl.generate_chrome_trace_format()
+                        # many_runs_timeline.update_timeline(ctf)
+                        if steps % period == 0 and steps != 0:
                             if validation_file:
                                 # save the model
                                 saver.save(sess, global_step=self.steps,
                                            save_path=os.path.join(saved_model_dir, 'checkpoint'))
                                 os.write(pipe[1], _IS_MSG_INFORM)
+                                # many_runs_timeline.save('ds_timeline_03_merged_%d_runs.json' % steps)
                             print("steps: %s" % (steps,))
                         steps += 1
 
                 except tf.errors.OutOfRangeError:
+
                     print("epoch %s complete, cost %.2fs, steps: %s" % (epoch, (time.time() - t), steps))
 
             print('training complete.')
@@ -362,7 +375,7 @@ class SoftmaxLayer(ISNNLayer):
 
 if __name__ == '__main__':
 
-    mbs = 100
+    mbs = 1000
     epochs = 30
     training_file = 'MNIST_GZ/training.tfrecords.gz'
     validation_file = 'MNIST_GZ/validation.tfrecords.gz'

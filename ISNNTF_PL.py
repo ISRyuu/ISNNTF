@@ -11,8 +11,8 @@ import tensorflow as tf
 import numpy as np
 from abc import ABCMeta, abstractmethod, abstractproperty
 from convert_to_tfrecords import read_minst_from_tfrecords
-from tensorflow.python.client import timeline
-from merge_tracing import *
+# from tensorflow.python.client import timeline
+# from merge_tracing import *
 
 _IS_MSG_INFORM = b'0'
 _IS_MSG_SHUTDOWN = b'1'
@@ -76,9 +76,9 @@ class ISTFNN(object):
               validation_process=False, period=100, validation_data=None):
 
         with tf.Session() as sess:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-            many_runs_timeline = TimeLiner()
+            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            # run_metadata = tf.RunMetadata()
+            # many_runs_timeline = TimeLiner()
             pipe = []
             if validation_process:
                 # TODO: validation process is not implemented.
@@ -128,6 +128,7 @@ class ISTFNN(object):
 
             coord = tf.train.Coordinator()
             thread = tf.train.start_queue_runners(coord=coord)
+
             t = 0
             step = 0
             try:
@@ -135,18 +136,18 @@ class ISTFNN(object):
                 t = time.time()
 
                 while not coord.should_stop():
-                    summary, _ = sess.run([merged, trainer], options=run_options, run_metadata=run_metadata)
+                    summary, _ = sess.run([merged, trainer])
                     train_writer.add_summary(summary, step)
 
                     step += 1
-                    tl = timeline.Timeline(run_metadata.step_stats)
-                    ctf = tl.generate_chrome_trace_format()
-                    many_runs_timeline.update_timeline(ctf)
+                    # tl = timeline.Timeline(run_metadata.step_stats)
+                    # ctf = tl.generate_chrome_trace_format()
+                    # many_runs_timeline.update_timeline(ctf)
 
                     if step % period == 0 and step != 0:
                         if validation_process:
                             os.write(pipe[1], _IS_MSG_INFORM)
-                        many_runs_timeline.save('timeline_03_merged_%d_runs.json' % step)
+                        # many_runs_timeline.save('pl_timeline_03_merged_%d_runs.json' % step)
                         print("cost %.2fs, steps: %s" % ((time.time() - t), step))
                         t = time.time()
 
@@ -300,8 +301,8 @@ epochs = 10
 with tf.variable_scope('input'):
     filequeue = tf.train.string_input_producer(['MNIST_GZ/training.tfrecords.gz'], num_epochs=epochs)
     img, label = read_minst_from_tfrecords(filequeue, 784, one_hot=10)
-    x, y = tf.train.shuffle_batch([img, label], batch_size=1000, capacity=1000+3*mbs,
-                              min_after_dequeue=1000, num_threads=2)
+    x, y = tf.train.shuffle_batch([img, label], batch_size=1000, capacity=50000,
+                              min_after_dequeue=10000, num_threads=10)
 
 
 layers = []

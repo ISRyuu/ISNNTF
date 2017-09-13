@@ -67,9 +67,9 @@ class ISTFNN(object):
         test_batches = np.size(test_data[0], 0) // self.mbs
 
         with tf.Session() as sess:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-            many_runs_timeline = TimeLiner()
+            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            # run_metadata = tf.RunMetadata()
+            # many_runs_timeline = TimeLiner()
             cost = self.layers[-1].cost(self)
             # regularization
             L2 = tf.reduce_sum([tf.reduce_sum(layer.parameters[0]**2) for layer in self.layers])
@@ -84,16 +84,15 @@ class ISTFNN(object):
                 for b in range(training_batches):
                     data_x = training_data[0][b*self.mbs: (b+1)*self.mbs]
                     data_y = training_data[1][b*self.mbs: (b+1)*self.mbs]
-                    cost_v, _ = sess.run([cost, trainer], feed_dict={self.x:data_x, self.y:data_y},
-                                         options=run_options, run_metadata=run_metadata)
-                    tl = timeline.Timeline(run_metadata.step_stats)
-                    ctf = tl.generate_chrome_trace_format()
-                    many_runs_timeline.update_timeline(ctf)
+                    cost_v, _ = sess.run([cost, trainer], feed_dict={self.x:data_x, self.y:data_y})
+                    # tl = timeline.Timeline(run_metadata.step_stats)
+                    # ctf = tl.generate_chrome_trace_format()
+                    # many_runs_timeline.update_timeline(ctf)
                 # print(sess.run([accuracy], feed_dict={self.x:training_data[0], self.y:training_data[1]}))
                 # print(sess.run([accuracy], feed_dict={self.x:validation_data[0], self.y:validation_data[1]}))
                 # print(sess.run([accuracy], feed_dict={self.x:test_data[0], self.y:test_data[1]}))
                 print("epoch %s complete. cost %.2fs" % (e, time.time() - t))
-                many_runs_timeline.save('fd_timeline_03_merged_%d_runs.json' % e)
+                # many_runs_timeline.save('fd_timeline_03_merged_%d_runs.json' % e)
                 res = []
                 for b in range(training_batches):
                     res.append(sess.run([accuracy], feed_dict={
