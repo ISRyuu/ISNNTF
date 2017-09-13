@@ -58,7 +58,7 @@ class ISNNLayer(object):
 
 class ISTFNN(object):
 
-    def __init__(self, layers, mini_batch_size, parse_func, scopes):
+    def __init__(self, layers, mini_batch_size, parse_func, scopes, buffer_mbs=100):
         '''
         :param parse_func: use as the parameter of dataset.map(), the dataset structure should be like
          (img, label), and labels should be one-hot.
@@ -77,9 +77,9 @@ class ISTFNN(object):
             dataset = tdata.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
             # i.e.: Don't repeat.
             dataset = dataset.repeat(1)
-            dataset = dataset.map(parse_func, num_threads=2, output_buffer_size=self.mbs*10)
+            dataset = dataset.map(parse_func, num_threads=10, output_buffer_size=self.mbs*buffer_mbs)
             # must set batch size before setting filter.
-            dataset = dataset.shuffle(buffer_size=self.mbs*10)
+            dataset = dataset.shuffle(buffer_size=self.mbs*buffer_mbs)
             dataset = dataset.batch(self.mbs)
             # currently there is no option like "allow_smaller_final_batch" in tf.train.batch
             # using the filter is an alternative way.
@@ -136,7 +136,7 @@ class ISTFNN(object):
                     r, *_ = select.select(rc, [], [])
                     msg = os.read(r[0], 1)
 
-                    if len(msg) == 0:
+                    if len(msg) == 0 or msg == _IS_MSG_SHUTDOWN:
                         # training process closed the pipe. quit.
                         break
 
@@ -161,7 +161,8 @@ class ISTFNN(object):
                                         print("%s set accuracy: %.2f%%" % (s, ac_mean * 100))
                                         # ![https://stackoverflow.com/questions/43322131/tensorflow-summary-adding-a-variable-which-does-not-belong-to-computational-gra]
                                         manual_summary = tf.Summary()
-                                        manual_summary.value.add(tag='accuracy', simple_value=ac_mean)
+                                        # numpy.item() to get <class 'float'>
+                                        manual_summary.value.add(tag='accuracy', simple_value=ac_mean.item())
                                         w.add_summary(manual_summary, epoch)
                                         w.flush()
                                     else: print('size error, empty accuracy records.')
@@ -225,18 +226,18 @@ class ISTFNN(object):
                         if steps % period == 0 and steps != 0:
                             if validation_file:
                                 # save the model
-                                saver.save(sess, global_step=self.steps,
-                                           save_path=os.path.join(saved_model_dir, 'checkpoint'))
+                                saver.save(sess, global_step=self.steps, 
+                                          save_path=os.path.join(saved_model_dir, 'checkpoint'))
                                 os.write(pipe[1], _IS_MSG_INFORM)
                                 # many_runs_timeline.save('ds_timeline_03_merged_%d_runs.json' % steps)
                             print("steps: %s" % (steps,))
                         steps += 1
 
                 except tf.errors.OutOfRangeError:
-
                     print("epoch %s complete, cost %.2fs, steps: %s" % (epoch, (time.time() - t), steps))
 
             print('training complete.')
+            os.write(pipe[1], _IS_MSG_SHUTDOWN)
 
         if pipe:
             os.close(pipe[0])
@@ -374,8 +375,9 @@ class SoftmaxLayer(ISNNLayer):
 
 
 if __name__ == '__main__':
-
-    mbs = 1000
+    
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    mbs = 200
     epochs = 30
     training_file = 'MNIST_GZ/training.tfrecords.gz'
     validation_file = 'MNIST_GZ/validation.tfrecords.gz'
@@ -385,10 +387,13 @@ if __name__ == '__main__':
 
     layers = []
     with tf.variable_scope('conv'):
-        layers.append(ConvolutionalLayer([mbs, 28, 28, 1], [5, 5, 1, 10]))
+        layers.append(ConvolutionalLayer([mbs, 28, 28, 1], [5, 5, 1, 100]))
+
+    with tf.variable_scope('conv2'):
+        layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
 
     with tf.variable_scope('fully'):
-        layers.append(FullyConnectedLayer(12*12*10, 100))
+        layers.append(FullyConnectedLayer(5*5*100, 100))
 
     with tf.variable_scope('softmax'):
         layers.append(SoftmaxLayer(100, 10))
@@ -396,7 +401,7 @@ if __name__ == '__main__':
     # add a slash to re enter scope. that's not a reliable but the only way.
     network = ISTFNN(layers, mbs,
                      parse_function_maker(img_shape, one_hot),
-                     ['conv/', 'fully/', 'softmax/'])
+                     ['conv/', 'conv2', 'fully/', 'softmax/'])
 
     network.train(eta=0.1, lambd=0, epochs=epochs, period=50000/mbs,
                   training_file=training_file, validation_file=validation_file, test_file=test_file)

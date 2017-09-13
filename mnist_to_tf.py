@@ -1,4 +1,4 @@
-# Spirit of Ryuu
+1;95;0c# Spirit of Ryuu
 # 2017/8/23
 # Kevin
 #
@@ -31,10 +31,11 @@ import tensorflow.contrib.data as tdata
 from convert_to_tfrecords import parse_function_maker
 
 if __name__ == '__main__':
-    # tr, v, te = load_from_minst("mnist.pkl.gz")
-    # convert_to_tfrecords('training', tr, 28, 28, 1)
-    # convert_to_tfrecords('validation', v, 28, 28, 1)
-    # convert_to_frecords('test', te, 28, 28, 1)
+    tr, v, te = load_from_minst("mnist.pkl.gz")
+    convert_to_tfrecords('training', tr, 28, 28, 1)
+    convert_to_tfrecords('validation', v, 28, 28, 1)
+    convert_to_tfrecords('test', te, 28, 28, 1)
+    exit()
     mbs = 10
     file = 'MNIST_GZ/training.tfrecords.gz'
     vfile = 'MNIST_GZ/validation.tfrecords.gz'

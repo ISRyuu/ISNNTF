@@ -296,13 +296,13 @@ class SoftmaxLayer(ISNNLayer):
 
 
 mbs = 1000
-epochs = 10
+epochs = 100
 
 with tf.variable_scope('input'):
     filequeue = tf.train.string_input_producer(['MNIST_GZ/training.tfrecords.gz'], num_epochs=epochs)
     img, label = read_minst_from_tfrecords(filequeue, 784, one_hot=10)
-    x, y = tf.train.shuffle_batch([img, label], batch_size=1000, capacity=50000,
-                              min_after_dequeue=10000, num_threads=10)
+    x, y = tf.train.shuffle_batch([img, label], batch_size=1000, capacity=500000,
+                              min_after_dequeue=100000, num_threads=20)
 
 
 layers = []
