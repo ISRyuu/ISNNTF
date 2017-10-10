@@ -23,6 +23,9 @@ from merge_tracing import *
 _IS_MSG_INFORM = b'0'
 _IS_MSG_SHUTDOWN = b'1'
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+
 class ISNNLayer(object):
     __metaclass__ = ABCMeta
 
@@ -128,7 +131,7 @@ class ISTFNN(object):
 
             saver = tf.train.Saver()
 
-            with tf.Session() as vsess:
+            with tf.Session(config=config) as vsess:
                 epoch = 0
                 while True:
                     # waiting for hyper-parameter updating.
@@ -189,7 +192,7 @@ class ISTFNN(object):
         trainer = opt.minimize(cost, global_step=self.steps)
 
         saver = tf.train.Saver()
-        with tf.Session() as sess:
+        with tf.Session(config=config) as sess:
 
             # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
             # run_metadata = tf.RunMetadata()
@@ -376,8 +379,8 @@ class SoftmaxLayer(ISNNLayer):
 
 if __name__ == '__main__':
     
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    mbs = 200
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
+    mbs = 1000
     epochs = 30
     training_file = 'MNIST_GZ/training.tfrecords.gz'
     validation_file = 'MNIST_GZ/validation.tfrecords.gz'
