@@ -80,7 +80,8 @@ class ISTFNN(object):
             dataset = tdata.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
             # i.e.: Don't repeat.
             dataset = dataset.repeat(1)
-            dataset = dataset.map(parse_func, num_threads=10, output_buffer_size=self.mbs*buffer_mbs)
+            dataset = dataset.map(parse_func, num_parallel_calls=20)
+            dataset = dataset.prefetch(buffer_mbs * self.mbs)
             # must set batch size before setting filter.
             dataset = dataset.shuffle(buffer_size=self.mbs*buffer_mbs)
             dataset = dataset.batch(self.mbs)
@@ -296,12 +297,12 @@ class FullyConnectedLayer(ISNNLayer):
 
 class ConvolutionalLayer(ISNNLayer):
     def __init__(self, input_shape, filter_shape,
-                 strides=(1, 1, 1, 1), pool_size=(1, 2, 2, 1), activation_fn=tf.nn.relu):
+                 strides=(1, 1, 1, 1, 1), pool_size=(1, 1, 2, 2, 1), activation_fn=tf.nn.relu):
         '''
-        :param input_shape: [batch_size, height, width, channels]
-        :param filter_shape: [height, width, in_channels, out_channels]
-        :param strides: same as input_shape, normally strides[0] = strides[3] = 1
-        :param pool_size: same as input_shape normally pool_size[0] = pool_size[3] = 1
+        :param input_shape: [batch_size, depth, height, width, channels]
+        :param filter_shape: [depth, height, width, in_channels, out_channels]
+        :param strides: same as input_shape, normally strides[0] = strides[4] = 1
+        :param pool_size: same as input_shape normally pool_size[0] = pool_size[4] = 1
         '''
         self._input_shape = input_shape
         self._strides = strides
@@ -309,7 +310,7 @@ class ConvolutionalLayer(ISNNLayer):
         self._pool_size = pool_size
         self._activation_fn = activation_fn
         self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=self._filter_shape,
-                                                        stddev=1.0/np.prod(filter_shape[0:2]),
+                                                        stddev=1.0/np.prod(filter_shape[:-1]),
                                                         dtype=tf.float32))
         self._biases = tf.get_variable('biases', initializer=tf.constant_initializer(0.1),
                                        shape=self._filter_shape[-1], dtype=tf.float32)
@@ -317,9 +318,9 @@ class ConvolutionalLayer(ISNNLayer):
     def input(self, inpt, mini_batch_size, keep_prob):
         # convolutional layer doesn't need dropout.
         inpt = tf.reshape(inpt, self._input_shape)
-        conv = tf.nn.conv2d(inpt, self._weights, self._strides, 'VALID') + self._biases
+        conv = tf.nn.conv3d(inpt, self._weights, self._strides, 'SAME') + self._biases
         # strides is the same as kernel size.
-        pool = tf.nn.max_pool(conv, ksize=self._pool_size, strides=self._pool_size, padding='VALID')
+        pool = tf.nn.max_pool3d(conv, ksize=self._pool_size, strides=self._pool_size, padding='VALID')
         self._output = self._activation_fn(pool)
 
 
@@ -390,13 +391,13 @@ if __name__ == '__main__':
 
     layers = []
     with tf.variable_scope('conv'):
-        layers.append(ConvolutionalLayer([mbs, 28, 28, 1], [5, 5, 1, 100]))
+        layers.append(ConvolutionalLayer([mbs, 1, 28, 28, 1], [1, 5, 5, 1, 100]))
 
-    with tf.variable_scope('conv2'):
-        layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
+    # with tf.variable_scope('conv2'):
+    #     layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
 
     with tf.variable_scope('fully'):
-        layers.append(FullyConnectedLayer(5*5*100, 100))
+        layers.append(FullyConnectedLayer(14*14*100, 100))
 
     with tf.variable_scope('softmax'):
         layers.append(SoftmaxLayer(100, 10))
@@ -404,7 +405,8 @@ if __name__ == '__main__':
     # add a slash to re enter scope. that's not a reliable but the only way.
     network = ISTFNN(layers, mbs,
                      parse_function_maker(img_shape, one_hot),
-                     ['conv/', 'conv2', 'fully/', 'softmax/'])
+                     ['conv/', 'fully/', 'softmax/'])
+    #                 ['conv/', 'conv2', 'fully/', 'softmax/'])
 
     network.train(eta=0.1, lambd=0, epochs=epochs, period=50000/mbs,
                   training_file=training_file, validation_file=validation_file, test_file=test_file)
