@@ -52,9 +52,9 @@ def read_minst_from_tfrecords(filequeue, shape, one_hot=0, GZ=True):
         features={
             'image_raw': tf.FixedLenFeature([], tf.string),
             'label': tf.FixedLenFeature([], tf.int64),
-            'height': tf.FixedLenFeature([], tf.int64),
-            'width': tf.FixedLenFeature([], tf.int64),
-            'depth': tf.FixedLenFeature([], tf.int64)
+            # 'height': tf.FixedLenFeature([], tf.int64),
+            # 'width': tf.FixedLenFeature([], tf.int64),
+            # 'depth': tf.FixedLenFeature([], tf.int64)
         })
 
     image = tf.decode_raw(features['image_raw'], tf.float32)
@@ -74,12 +74,18 @@ def parse_function_maker(shape, one_hot=0):
             features={
                 'image_raw': tf.FixedLenFeature([], tf.string),
                 'label': tf.FixedLenFeature([], tf.int64),
-                'height': tf.FixedLenFeature([], tf.int64),
-                'width': tf.FixedLenFeature([], tf.int64),
-                'depth': tf.FixedLenFeature([], tf.int64)
+                # 'height': tf.FixedLenFeature([], tf.int64),
+                # 'width': tf.FixedLenFeature([], tf.int64),
+                # 'depth': tf.FixedLenFeature([], tf.int64)
             })
 
-        image = tf.decode_raw(features['image_raw'], tf.float32)
+        image = tf.decode_raw(features['image_raw'], tf.uint8)
+        image = tf.cast(image, tf.float32)
+        max = tf.reduce_max(image)
+        mean = tf.reduce_mean(image)
+        image = tf.subtract(image, max)
+        image = tf.div(image, mean)
+        #image = tf.cast(image, tf.float32)
         image.set_shape([shape])
         label = tf.cast(features['label'], tf.int32)
         if one_hot > 0:

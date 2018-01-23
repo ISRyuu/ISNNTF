@@ -14,7 +14,6 @@ import os, time, select, signal
 import tensorflow as tf
 import numpy as np
 from abc import ABCMeta, abstractmethod
-import tensorflow.contrib.data as tdata
 from convert_to_tfrecords import parse_function_maker
 
 from tensorflow.python.client import timeline
@@ -77,7 +76,7 @@ class ISTFNN(object):
 
         with tf.variable_scope('input'):
             self.input_file_placeholder = tf.placeholder(dtype=tf.string, name='input_file')
-            dataset = tdata.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
+            dataset = tf.data.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
             # i.e.: Don't repeat.
             dataset = dataset.repeat(1)
             dataset = dataset.map(parse_func, num_parallel_calls=20)
@@ -383,21 +382,22 @@ if __name__ == '__main__':
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
     mbs = 1000
     epochs = 30
-    training_file = 'MNIST_GZ/training.tfrecords.gz'
-    validation_file = 'MNIST_GZ/validation.tfrecords.gz'
-    test_file = 'MNIST_GZ/test.tfrecords.gz'
-    img_shape = 784
+    training_file = 'MNIST_GZ/cifar10.tfrecords.gz'
+    validation_file = 'MNIST_GZ/cifar10_test.tfrecords.gz'
+    #test_file = 'MNIST_GZ/test.tfrecords.gz'
+    test_file = None
+    img_shape = 32*32*3
     one_hot = 10
 
     layers = []
     with tf.variable_scope('conv'):
-        layers.append(ConvolutionalLayer([mbs, 28, 28, 1], [5, 5, 1, 100]))
+        layers.append(ConvolutionalLayer([mbs, 32, 32, 3], [5, 5, 3, 50]))
 
     # with tf.variable_scope('conv2'):
     #     layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
 
     with tf.variable_scope('fully'):
-        layers.append(FullyConnectedLayer(14*14*100, 100))
+        layers.append(FullyConnectedLayer(16*16*50, 100))
 
     with tf.variable_scope('softmax'):
         layers.append(SoftmaxLayer(100, 10))
