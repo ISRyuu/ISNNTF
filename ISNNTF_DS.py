@@ -297,7 +297,7 @@ class FullyConnectedLayer(ISNNLayer):
 
 class ConvolutionalLayer(ISNNLayer):
     def __init__(self, input_shape, filter_shape,
-                 strides=(1, 1, 1, 1, 1), pool_size=(1, 1, 2, 2, 1), activation_fn=tf.nn.relu):
+                 strides=(1, 1, 1, 1), pool_size=(1, 2, 2, 1), activation_fn=tf.nn.relu):
         '''
         :param input_shape: [batch_size, depth, height, width, channels]
         :param filter_shape: [depth, height, width, in_channels, out_channels]
@@ -318,9 +318,9 @@ class ConvolutionalLayer(ISNNLayer):
     def input(self, inpt, mini_batch_size, keep_prob):
         # convolutional layer doesn't need dropout.
         inpt = tf.reshape(inpt, self._input_shape)
-        conv = tf.nn.conv3d(inpt, self._weights, self._strides, 'SAME') + self._biases
+        conv = tf.nn.conv2d(inpt, self._weights, self._strides, 'SAME') + self._biases
         # strides is the same as kernel size.
-        pool = tf.nn.max_pool3d(conv, ksize=self._pool_size, strides=self._pool_size, padding='VALID')
+        pool = tf.nn.max_pool(conv, ksize=self._pool_size, strides=self._pool_size, padding='VALID')
         self._output = self._activation_fn(pool)
 
 
@@ -391,7 +391,7 @@ if __name__ == '__main__':
 
     layers = []
     with tf.variable_scope('conv'):
-        layers.append(ConvolutionalLayer([mbs, 1, 28, 28, 1], [1, 5, 5, 1, 100]))
+        layers.append(ConvolutionalLayer([mbs, 28, 28, 1], [5, 5, 1, 100]))
 
     # with tf.variable_scope('conv2'):
     #     layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
