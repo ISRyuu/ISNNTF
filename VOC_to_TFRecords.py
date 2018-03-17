@@ -6,6 +6,7 @@ import tensorflow as tf
 import xml.etree.ElementTree as xmlET
 from TFRConverter import VOC_TFRecords
 
+
 class DataUtility(object):
     def __init__(self, image_size, cell_size, class_number, label_to_index, data_dir):
         self.image_size = image_size
@@ -53,7 +54,7 @@ class DataUtility(object):
         height_ratio = self.image_size / height
 
         # 5 : [size(contain obj or not) == 1, size(bbox) == 4]
-        annotations = np.zeros((self.cell_size, self.cell_size, self.class_number + 5))
+        annotations = np.zeros((self.cell_size, self.cell_size, self.class_number + 5), dtype='float32')
 
         for obj in xml_obj.findall('object'):
             label = obj.find('name').text
@@ -74,10 +75,10 @@ class DataUtility(object):
             y_cell_index = int(center_y / self.image_size * self.cell_size)
             class_index = self.class_indices[label]
             
-            annotations[x_cell_index, y_cell_index][0] = 1
-            annotations[x_cell_index, y_cell_index][1:5] = bbox
-            annotations[x_cell_index, y_cell_index][5 + class_index] = 1
-
+            annotations[y_cell_index, x_cell_index][class_index] = 1
+            annotations[y_cell_index, x_cell_index][self.class_number] = 1
+            annotations[y_cell_index, x_cell_index][self.class_number+1:self.class_number+5] = bbox
+        
         return annotations
     
 

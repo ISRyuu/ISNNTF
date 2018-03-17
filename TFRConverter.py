@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 from tensorflow import python_io as tpio
 import os
 
@@ -62,10 +63,11 @@ class VOC_TFRecords(object):
             max = tf.reduce_max(image)
             min = tf.reduce_min(image)
             image = tf.div(tf.subtract(image, min), tf.subtract(max, min))
-            image.set_shape(shape_img)
-
+            image.set_shape(np.prod(shape_img))
+            image = tf.reshape(image, shape_img)
+            
             annotations = tf.decode_raw(features['annotations_raw'], tf.float32)
-            annotations.set_shape(shape_anno)
+            annotations.set_shape(np.prod(shape_anno))
 
             return image, annotations
 
