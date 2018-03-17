@@ -25,6 +25,7 @@ _IS_MSG_SHUTDOWN = b'1'
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
+
 class ISNNLayer(object):
     __metaclass__ = ABCMeta
 
@@ -60,17 +61,19 @@ class ISNNLayer(object):
 
 class ISTFNN(object):
 
-    def __init__(self, layers, mini_batch_size, parse_func, scopes, buffer_mbs=100):
+    def __init__(self, layers, mini_batch_size, parse_func, buffer_mbs=100):
         '''
-        :param parse_func: use as the parameter of dataset.map(), the dataset structure should be like
+        :param parse_func: use as the parameter of dataset.map(), the dataset
+         structure should be like
          (img, label), and labels should be one-hot.
 
         :param scopes: scope name for each layer.
         '''
-        self.layers = layers
+        self.scoped_layers = layers
+        self.layers, self.scopes = zip(*self.scoped_layers)
         self.parse_func = parse_func
         self.mbs = mini_batch_size
-        self.scopes = scopes
+
         # dropout
         self.keep_prob = tf.placeholder_with_default(1.0, shape=(), name='dropout_keep_prob')
 
@@ -91,7 +94,7 @@ class ISTFNN(object):
             data = self.iterator.get_next()
             self.x = data[0]
             self.y = data[1]
-
+                
         with tf.variable_scope(self.scopes[0]):
             self.layers[0].input(self.x, self.mbs, self.keep_prob)
         i = 1
@@ -121,7 +124,7 @@ class ISTFNN(object):
         if pid == 0:
             # validation process
             print('validation process ', os.getpid())
-            net = ISTFNN(self.layers, self.mbs, self.parse_func, self.scopes)
+            net = ISTFNN(self.scoped_layers, self.mbs, self.parse_func)
             vaccuracy = net.layers[-1].accuracy(net.y)
 
             writer_tra = tf.summary.FileWriter('accuracy_log/training_set')
@@ -246,7 +249,6 @@ class ISTFNN(object):
             os.close(pipe[0])
             os.close(pipe[1])
 
-
     def sigchld_handler(self, p1, p2):
         print('validation process is dead, killing training process.')
         os.waitpid(self._cpid, 0)
@@ -298,8 +300,8 @@ class ConvolutionalLayer(ISNNLayer):
     def __init__(self, input_shape, filter_shape,
                  strides=(1, 1, 1, 1), pool_size=(1, 2, 2, 1), activation_fn=tf.nn.relu):
         '''
-        :param input_shape: [batch_size, depth, height, width, channels]
-        :param filter_shape: [depth, height, width, in_channels, out_channels]
+        :param input_shape: [batch_size, height, width, channels]
+        :param filter_shape: [height, width, in_channels, out_channels]
         :param strides: same as input_shape, normally strides[0] = strides[4] = 1
         :param pool_size: same as input_shape normally pool_size[0] = pool_size[4] = 1
         '''
@@ -319,8 +321,11 @@ class ConvolutionalLayer(ISNNLayer):
         inpt = tf.reshape(inpt, self._input_shape)
         conv = tf.nn.conv2d(inpt, self._weights, self._strides, 'SAME') + self._biases
         # strides is the same as kernel size.
-        pool = tf.nn.max_pool(conv, ksize=self._pool_size, strides=self._pool_size, padding='VALID')
-        self._output = self._activation_fn(pool)
+        if self._pool_size:
+            pool = tf.nn.max_pool(conv, ksize=self._pool_size, strides=self._pool_size, padding='SAME')
+            self._output = self._activation_fn(pool)
+        else:
+            self._output = self._activation_fn(conv)
 
 
     def cost(self, net):
@@ -391,21 +396,19 @@ if __name__ == '__main__':
 
     layers = []
     with tf.variable_scope('conv'):
-        layers.append(ConvolutionalLayer([mbs, 32, 32, 3], [5, 5, 3, 50]))
+        layers.append([ConvolutionalLayer([mbs, 32, 32, 3], [5, 5, 3, 50]), "conv/"])
 
     # with tf.variable_scope('conv2'):
     #     layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
 
     with tf.variable_scope('fully'):
-        layers.append(FullyConnectedLayer(16*16*50, 100))
+        layers.append([FullyConnectedLayer(16*16*50, 100), "fully/"])
 
     with tf.variable_scope('softmax'):
-        layers.append(SoftmaxLayer(100, 10))
+        layers.append([SoftmaxLayer(100, 10), "softmax/"])
 
     # add a slash to re enter scope. that's not a reliable but the only way.
-    network = ISTFNN(layers, mbs,
-                     parse_function_maker(img_shape, one_hot),
-                     ['conv/', 'fully/', 'softmax/'])
+    network = ISTFNN(layers, mbs, parse_function_maker(img_shape, one_hot))
     #                 ['conv/', 'conv2', 'fully/', 'softmax/'])
 
     network.train(eta=0.1, lambd=0, epochs=epochs, period=50000/mbs,
