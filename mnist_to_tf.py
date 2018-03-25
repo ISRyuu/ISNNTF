@@ -1,4 +1,4 @@
-1;95;0c# Spirit of Ryuu
+# Spirit of Ryuu
 # 2017/8/23
 # Kevin
 #

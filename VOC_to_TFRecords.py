@@ -20,7 +20,7 @@ class DataUtility(object):
             image_dir = os.path.join(self.data_dir, "JPEGImages")
             anno_dir = os.path.join(self.data_dir, "Annotations")
             count = 0
-            cv2.namedWindow("Test", cv2.WINDOW_AUTOSIZE)
+       #     cv2.namedWindow("Test", cv2.WINDOW_AUTOSIZE)
             for filename in os.listdir(image_dir):
                 if not filename.endswith(".jpg"):
                     continue

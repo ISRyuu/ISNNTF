@@ -254,13 +254,14 @@ if __name__ == '__main__':
     training_file = "voc2007.tfrecords.gz"
 
     yolo = MYYOLO(448, mbs, 20, 7, 2)
-    optimizer = tf.train.AdamOptimizer(0.01)
+    optimizer = tf.train.AdamOptimizer(0.0005)
     cost = yolo.loss_layer(net.output, net.y)
     trainer = optimizer.minimize(cost)
    
     init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-
-    with tf.Session() as sess:
+    config = tf.ConfigProto(log_device_placement=True)
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
         sess.run(init)
         for _ in range(10):
             sess.run(net.iterator.initializer,
@@ -268,7 +269,7 @@ if __name__ == '__main__':
             try:
                 while True:
                     last = time.time()
-                    print(sess.run([cost], trainer))
+                    print(sess.run([cost, trainer]))
                     print(time.time() - last)
 
             except tf.errors.OutOfRangeError:
