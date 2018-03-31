@@ -75,9 +75,9 @@ class ISTFNN(object):
         self.parse_func = parse_func
         self.mbs = mini_batch_size
 
-        # dropout
+        # dropout(deprecated ! now this setting is in FC layer's initializer.)
         self.keep_prob = tf.placeholder_with_default(1.0, shape=(), name='dropout_keep_prob')
-
+        
         with tf.variable_scope('input'):
             self.input_file_placeholder = tf.placeholder(dtype=tf.string, name='input_file')
             dataset = tf.data.TFRecordDataset(self.input_file_placeholder, compression_type='GZIP')
@@ -258,8 +258,9 @@ class ISTFNN(object):
 
 class FullyConnectedLayer(ISNNLayer):
 
-    def __init__(self, size_in, size_out, activation_fn=tf.nn.relu):
+    def __init__(self, size_in, size_out, activation_fn=tf.nn.relu, keep_prob=1.0):
         self._size_in = size_in
+        self._keep_prob = keep_prob
         self._size_out = size_out
         self._activation_fn = activation_fn
         self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=(self._size_in, self._size_out),
@@ -270,7 +271,9 @@ class FullyConnectedLayer(ISNNLayer):
     def input(self, inpt, mini_batch_size, keep_prob):
         inpt = tf.reshape(inpt, [mini_batch_size, self._size_in])
         z = tf.matmul(inpt, self._weights) + self._biases
-        self._output = tf.nn.dropout(self._activation_fn(z), keep_prob)
+        if self._activation_fn:
+            z = self._activation_fn(z)
+        self._output = tf.nn.dropout(z, self._keep_prob)
         self._y_out = tf.argmax(self._output, axis=1)
 
     def cost(self, net):
@@ -299,13 +302,14 @@ class FullyConnectedLayer(ISNNLayer):
 
 class ConvolutionalLayer(ISNNLayer):
     def __init__(self, input_shape, filter_shape,
-                 strides=(1, 1, 1, 1), pool_size=(1, 2, 2, 1), activation_fn=tf.nn.relu):
+                 strides=(1, 1, 1, 1), pool_size=(1, 2, 2, 1), activation_fn=tf.nn.relu, padding='SAME'):
         '''
         :param input_shape: [batch_size, height, width, channels]
         :param filter_shape: [height, width, in_channels, out_channels]
         :param strides: same as input_shape, normally strides[0] = strides[4] = 1
         :param pool_size: same as input_shape normally pool_size[0] = pool_size[4] = 1
         '''
+        self._padding = padding
         self._input_shape = input_shape
         self._strides = strides
         self._filter_shape = filter_shape
@@ -320,7 +324,7 @@ class ConvolutionalLayer(ISNNLayer):
     def input(self, inpt, mini_batch_size, keep_prob):
         # convolutional layer doesn't need dropout.
         inpt = tf.reshape(inpt, self._input_shape)
-        conv = tf.nn.conv2d(inpt, self._weights, self._strides, 'SAME') + self._biases
+        conv = tf.nn.conv2d(inpt, self._weights, self._strides, self._padding) + self._biases
         # strides is the same as kernel size.
         if self._pool_size:
             pool = tf.nn.max_pool(conv, ksize=self._pool_size, strides=self._pool_size, padding='SAME')
@@ -337,7 +341,7 @@ class ConvolutionalLayer(ISNNLayer):
 
     @property
     def y_out(self):
-        raise ArithmeticError
+        return None
 
     @property
     def output(self):
