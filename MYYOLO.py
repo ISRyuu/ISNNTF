@@ -385,13 +385,23 @@ if __name__ == '__main__':
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
-                7*7*1024, 4096, activation_fn=leaky_relu
+                7*7*1024, 512, activation_fn=leaky_relu
             ),
             "conn%d/" % layer_no
         ])
     layer_no += 1
 
     # layer 26
+    with tf.variable_scope("conn%d" % layer_no):
+        layers.append([
+            FullyConnectedLayer(
+                512, 4096, activation_fn=leaky_relu
+            ),
+            "conn%d/" % layer_no
+        ])
+    layer_no += 1
+    
+    # layer 27
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
@@ -405,8 +415,9 @@ if __name__ == '__main__':
     training_file = "voc2007.tfrecords.gz"
     test_file = "voc2007test.tfrecords.gz"
 
+    saver = tf.train.Saver()
     yolo = MYYOLO(448, mbs, 20, 7, 2)
-    optimizer = tf.train.AdamOptimizer(0.0005)
+    optimizer = tf.train.AdamOptimizer(0.00001)
     cost = yolo.loss_layer(net.output, net.y)
     trainer = optimizer.minimize(cost)
 
@@ -416,6 +427,11 @@ if __name__ == '__main__':
 
     with tf.Session(config=config) as sess:
         sess.run(init)
+        vs = tf.global_variables()
+        w = np.load("weights.npy")
+        for tensor, v in zip(vs, w):
+            tensor.load(v, sess)
+        
         for _ in range(100):
             sess.run(net.iterator.initializer,
                      feed_dict={net.input_file_placeholder: training_file})
@@ -424,10 +440,6 @@ if __name__ == '__main__':
                     last = time.time()
                     loss, pred, out, _ = sess.run([cost, net.output, net.y, trainer])
                     print("cost: %f time: %f" % (loss, time.time() - last))
-                    if loss > 10000:
-                        np.save("output", out)
-                        np.save("pred", pred)
-                        exit(0)
 
             except tf.errors.OutOfRangeError:
                 loss = []
