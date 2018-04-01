@@ -5,6 +5,7 @@ from ISNNTF_DS import ConvolutionalLayer
 from ISNNTF_DS import FullyConnectedLayer
 from ISNNTF_DS import ISTFNN
 from TFRConverter import VOC_TFRecords
+from tensorflow.python import debug as tf_debug
 
 
 def leaky_relu(x):
@@ -25,111 +26,118 @@ class MYYOLO(object):
             (self.cell_size, self.cell_size, self.predict_boxes))
 
     def loss_layer(self, predictions, gbox):
+        with tf.variable_scope("loss"):
+            predictions = tf.reshape(predictions, [self.mbs, self.cell_size, self.cell_size, -1])
+            gbox = tf.reshape(gbox, [self.mbs, self.cell_size, self.cell_size, -1])
 
-        predictions = tf.reshape(predictions, [self.mbs, self.cell_size, self.cell_size, -1])
-        gbox = tf.reshape(gbox, [self.mbs, self.cell_size, self.cell_size, -1])
+            label = gbox[..., :self.classes]
 
-        label = gbox[..., :self.classes]
+            # contain object or not
+            confidence = tf.reshape(
+                gbox[..., self.classes],
+                [self.mbs, self.cell_size, self.cell_size, 1])
 
-        # contain object or not
-        confidence = tf.reshape(
-            gbox[..., self.classes],
-            [self.mbs, self.cell_size, self.cell_size, 1])
+            # groud true boxes
+            gtb = tf.reshape(
+                gbox[..., self.classes+1:],
+                [self.mbs, self.cell_size, self.cell_size, 1, 4]) / self.img_size
 
-        # groud true boxes
-        gtb = tf.reshape(
-            gbox[..., self.classes+1:],
-            [self.mbs, self.cell_size, self.cell_size, 1, 4]) / self.img_size
+            p_labels = predictions[..., :self.classes]
+            p_confidences = tf.reshape(
+                predictions[..., self.classes:self.classes+self.predict_boxes],
+                [self.mbs, self.cell_size, self.cell_size, self.predict_boxes])
 
-        p_labels = predictions[..., :self.classes]
-        p_confidences = tf.reshape(
-            predictions[..., self.classes:self.classes+self.predict_boxes],
-            [self.mbs, self.cell_size, self.cell_size, self.predict_boxes])
+            p_boxes = tf.reshape(
+                predictions[..., self.classes+self.predict_boxes:],
+                [self.mbs, self.cell_size, self.cell_size, self.predict_boxes, 4])
 
-        p_boxes = tf.reshape(
-            predictions[..., self.classes+self.predict_boxes:],
-            [self.mbs, self.cell_size, self.cell_size, self.predict_boxes, 4])
+            # repeat gtb to fit predictions
+            size_fitted_gtb = tf.tile(gtb, [1, 1, 1, self.predict_boxes, 1])
 
-        # repeat gtb to fit predictions
-        size_fitted_gtb = tf.tile(gtb, [1, 1, 1, self.predict_boxes, 1])
+            offset_y = tf.expand_dims(
+                tf.constant(self.offset_y, dtype=tf.float32), 0)
 
-        offset_y = tf.expand_dims(
-            tf.constant(self.offset_y, dtype=tf.float32), 0)
+            offset_y = tf.tile(offset_y, [self.mbs, 1, 1, 1])
+            offset_x = tf.transpose(offset_y, (0, 2, 1, 3))
 
-        offset_y = tf.tile(offset_y, [self.mbs, 1, 1, 1])
-        offset_x = tf.transpose(offset_y, (0, 2, 1, 3))
+            # convert x, y to values relative to the whole image
+            # and square back w, h, predict sqrted w, h according
+            # to original darknet implementation, for convenience.
+            p_boxes_squared_offset = tf.stack(
+                [(p_boxes[..., 0] + offset_x) / self.cell_size,
+                 (p_boxes[..., 1] + offset_y) / self.cell_size,
+                 tf.square(p_boxes[..., 2]),
+                 tf.square(p_boxes[..., 3])],
+                axis=-1)
 
-        # convert x, y to values relative to the whole image
-        # and square back w, h, predict sqrted w, h according
-        # to original darknet implementation, for convenience.
-        p_boxes_squared_offset = tf.stack(
-            [(p_boxes[..., 0] + offset_x) / self.cell_size,
-             (p_boxes[..., 1] + offset_y) / self.cell_size,
-             tf.square(p_boxes[..., 2]),
-             tf.square(p_boxes[..., 3])],
-            axis=-1)
+            iou = self.calculate_IOU(p_boxes_squared_offset, size_fitted_gtb)
+            responsible_iou = tf.reduce_max(iou, axis=-1, keepdims=True)
+            responsible_mask = tf.cast(iou >= responsible_iou, tf.float32)
 
-        iou = self.calculate_IOU(p_boxes_squared_offset, size_fitted_gtb)
-        responsible_iou = tf.reduce_max(iou, axis=-1, keepdims=True)
-        responsible_mask = tf.cast(iou >= responsible_iou, tf.float32)
+            object_responsible_mask = responsible_mask * confidence
+            noobj_mask = tf.ones_like(object_responsible_mask) - \
+                         object_responsible_mask
 
-        object_responsible_mask = responsible_mask * confidence
-        noobj_mask = tf.ones_like(object_responsible_mask) - \
-                     object_responsible_mask
+            # convert x, y to values relative to bounds of the grid cell
+            boxes_offset_sqrted = tf.stack(
+                [size_fitted_gtb[..., 0] * self.cell_size - offset_x,
+                 size_fitted_gtb[..., 1] * self.cell_size - offset_y,
+                 tf.sqrt(size_fitted_gtb[..., 2]),
+                 tf.sqrt(size_fitted_gtb[..., 3])],
+                axis=-1)
 
-        # convert x, y to values relative to bounds of the grid cell
-        boxes_offset_sqrted = tf.stack(
-            [size_fitted_gtb[..., 0] * self.cell_size - offset_x,
-             size_fitted_gtb[..., 1] * self.cell_size - offset_y,
-             tf.sqrt(size_fitted_gtb[..., 2]),
-             tf.sqrt(size_fitted_gtb[..., 3])],
-            axis=-1)
-
-        loss_boxes = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.square(
-                    tf.multiply(
-                        p_boxes - boxes_offset_sqrted,
-                        tf.expand_dims(object_responsible_mask, axis=-1)
-                    )
-                ),
-                axis=[1, 2, 3, 4]
-            )
-        ) * self.lambda_coord
-
-        loss_classes = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.square((p_labels - label) * confidence),
-                axis=[1, 2, 3]
-            )
-        )
-
-        # https://github.com/pjreddie/darknet/blob/master/src/detection_layer.c
-        # line 166
-        # It seems this is inconsistent with the loss function in paper.
-        loss_obj_confidence = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.square(
-                    tf.multiply(
-                        iou - p_confidences,
-                        object_responsible_mask
-                    )
-                ),
-                axis=[1, 2, 3]
-            )
-        )
-
-        loss_noobj_confidence = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.square(p_confidences * noobj_mask),
-                axis=[1, 2, 3]
+            loss_boxes = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.square(
+                        tf.multiply(
+                            p_boxes - boxes_offset_sqrted,
+                            tf.expand_dims(object_responsible_mask, axis=-1)
+                        )
+                    ),
+                    axis=[1, 2, 3, 4]
                 )
-            ) * self.lambda_noobj
+            ) * self.lambda_coord
 
-        loss = loss_boxes + loss_classes + \
-               loss_obj_confidence + loss_noobj_confidence
+            loss_classes = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.square((p_labels - label) * confidence),
+                    axis=[1, 2, 3]
+                )
+            )
 
-        return loss
+            # https://github.com/pjreddie/darknet/blob/master/src/detection_layer.c
+            # line 166
+            # It seems this is inconsistent with the loss function in paper.
+            loss_obj_confidence = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.square(
+                        tf.multiply(
+                            iou - p_confidences,
+                            object_responsible_mask
+                        )
+                    ),
+                    axis=[1, 2, 3]
+                )
+            )
+
+            loss_noobj_confidence = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.square(p_confidences * noobj_mask),
+                    axis=[1, 2, 3]
+                    )
+                ) * self.lambda_noobj
+
+            loss = loss_boxes + loss_classes + \
+                   loss_obj_confidence + loss_noobj_confidence
+
+            tf.summary.scalar('loss', loss)
+            tf.summary.scalar('loss_boxes', loss_boxes)
+            tf.summary.scalar('loss_classes', loss_classes)
+            tf.summary.scalar('loss_obj_confidence', loss_obj_confidence)
+            tf.summary.scalar('loss_noobj_confidence', loss_noobj_confidence)
+            
+            return loss
+        
 
     def calculate_IOU(self, predictions, gtb):
         # convert boxes from [centerx, centery, w, h] to
@@ -182,8 +190,7 @@ class MYYOLO(object):
         return iou
 
 
-if __name__ == '__main__':
-    mbs = 1
+def YOLO_layers(mbs):
     layers = []
     layer_no = 1
 
@@ -385,7 +392,7 @@ if __name__ == '__main__':
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
-                7*7*1024, 512, activation_fn=leaky_relu
+                7*7*1024, 4096, activation_fn=leaky_relu
             ),
             "conn%d/" % layer_no
         ])
@@ -395,69 +402,71 @@ if __name__ == '__main__':
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
-                512, 4096, activation_fn=leaky_relu
-            ),
-            "conn%d/" % layer_no
-        ])
-    layer_no += 1
-    
-    # layer 27
-    with tf.variable_scope("conn%d" % layer_no):
-        layers.append([
-            FullyConnectedLayer(
                 4096, 7*7*30, activation_fn=None, keep_prob=0.5
             ),
             "conn%d/" % layer_no
         ])
+        
+    return layers
 
+
+if __name__ == '__main__':
+    mbs = 1
+    layers = YOLO_layers(mbs)
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
     net = ISTFNN(layers, mbs, parser, buffer_mbs=10)
+    
     training_file = "voc2007.tfrecords.gz"
     test_file = "voc2007test.tfrecords.gz"
 
-    saver = tf.train.Saver()
+    global_steps = tf.Variable(0, tf.int32, name='steps')
+    
     yolo = MYYOLO(448, mbs, 20, 7, 2)
     optimizer = tf.train.AdamOptimizer(0.00001)
     cost = yolo.loss_layer(net.output, net.y)
-    trainer = optimizer.minimize(cost)
+    trainer = optimizer.minimize(cost, global_step=global_steps)
 
+    saver = tf.train.Saver()
+    
     init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     config = tf.ConfigProto(log_device_placement=True)
     config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
-        sess.run(init)
-        vs = tf.global_variables()
-        w = np.load("weights.npy")
-        for tensor, v in zip(vs, w):
-            tensor.load(v, sess)
+#        sess = tf_debug.TensorBoardDebugWrapperSession(sess, 'localhost:6064')
+        merged = tf.summary.merge_all()
+        train_writer = tf.summary.FileWriter('training_log', graph=sess.graph)
+        test_writer = tf.summary.FileWriter('test_log')
         
+        sess.run(init)
+        steps = 0
+        test_steps = 0
         for _ in range(100):
             sess.run(net.iterator.initializer,
                      feed_dict={net.input_file_placeholder: training_file})
             try:
                 while True:
                     last = time.time()
-                    loss, pred, out, _ = sess.run([cost, net.output, net.y, trainer])
+                    loss, summary, _ = sess.run([cost, merged, trainer])
+                    train_writer.add_summary(summary, steps)
+                    steps += 1
                     print("cost: %f time: %f" % (loss, time.time() - last))
 
             except tf.errors.OutOfRangeError:
-                loss = []
+                saver.save(sess, global_step=global_steps,
+                           save_path=os.path.join('model', 'checkpoint'))
+                losses = []
                 sess.run(net.iterator.initializer,
                          feed_dict={net.input_file_placeholder: test_file})
                 try:
                     start_time = time.time()
                     while True:
-                        loss += sess.run([cost])
+                        loss, summary = sess.run([cost, merged])
+                        test_writer.add_summary(summary, test_steps)
+                        test_steps += 1
+                        print("test batch loss: %f" % loss)
+                        losses += [loss]
                 except tf.errors.OutOfRangeError:
-                        print("test loss: %f" % np.mean([loss]))
+                        print("test loss: %f" % np.mean(losses))
                         print("test evaluation time: %f" % (time.time() - start_time))
 
-                        
-if __name__ != '__main__':
-    yolo = MYYOLO(448, 10, 20, 7, 2)
-    pseudo_pred = tf.random_uniform([10, 7, 7, 30])
-    pseudo_gtb = tf.random_uniform([10, 7, 7, 25])
-    res = yolo.loss_layer(pseudo_pred, pseudo_gtb)
-    sess = tf.Session()
-    print(sess.run(res))
