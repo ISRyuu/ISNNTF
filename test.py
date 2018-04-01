@@ -19,12 +19,9 @@ def iou(box_1, box_2):
     overlap_lrx = min(box_1_lrx, box_2_lrx)
     overlap_lry = min(box_1_lry, box_2_lry)
 
-    overlap = max(
-        0,
-        (overlap_lrx - overlap_ulx) * (overlap_lry - overlap_uly)
-    )
+    overlap = max(0, (overlap_lrx - overlap_ulx)) * max(0, (overlap_lry - overlap_uly))
 
-    union = box_1[2] * box_1[3] + box_2[2] * box_2[3] - overlap
+    union = max(1e-10, (box_1[2] * box_1[3] + box_2[2] * box_2[3] - overlap))
 
     return min(max(0, overlap / union), 1)
 
@@ -103,3 +100,5 @@ if __name__ == '__main__':
     #     probabilites += [np.expand_dims(confidences[..., i], axis=-1) * classes]
 
     # print(probs == np.stack(probabilites, axis=-2))
+
+    
