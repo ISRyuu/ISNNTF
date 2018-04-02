@@ -191,6 +191,7 @@ class MYYOLO(object):
 
 
 def YOLO_layers(mbs):
+    keep_prob = tf.placeholder_with_default(1.0, shape=(), name='dropout_keep_prob')
     layers = []
     layer_no = 1
 
@@ -392,7 +393,7 @@ def YOLO_layers(mbs):
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
-                7*7*1024, 4096, activation_fn=leaky_relu
+                7*7*1024, 4096, activation_fn=leaky_relu, keep_prob=keep_prob
             ),
             "conn%d/" % layer_no
         ])
@@ -402,17 +403,17 @@ def YOLO_layers(mbs):
     with tf.variable_scope("conn%d" % layer_no):
         layers.append([
             FullyConnectedLayer(
-                4096, 7*7*30, activation_fn=None, keep_prob=0.5
+                4096, 7*7*30, activation_fn=None
             ),
             "conn%d/" % layer_no
         ])
         
-    return layers
+    return layers, keep_prob
 
 
 if __name__ == '__main__':
     mbs = 1
-    layers = YOLO_layers(mbs)
+    layers, keep_prob = YOLO_layers(mbs)
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
     net = ISTFNN(layers, mbs, parser, buffer_mbs=10)
     
@@ -441,32 +442,34 @@ if __name__ == '__main__':
         sess.run(init)
         steps = 0
         test_steps = 0
-        for _ in range(100):
-            sess.run(net.iterator.initializer,
-                     feed_dict={net.input_file_placeholder: training_file})
-            try:
-                while True:
-                    last = time.time()
-                    loss, summary, _ = sess.run([cost, merged, trainer])
-                    train_writer.add_summary(summary, steps)
-                    steps += 1
-                    print("cost: %f time: %f" % (loss, time.time() - last))
-
-            except tf.errors.OutOfRangeError:
-                saver.save(sess, global_step=global_steps,
-                           save_path=os.path.join('model', 'checkpoint'))
-                losses = []
+        with open("output", "w") as outputfile:
+            for epoch in range(100):
                 sess.run(net.iterator.initializer,
-                         feed_dict={net.input_file_placeholder: test_file})
+                         feed_dict={net.input_file_placeholder: training_file})
                 try:
-                    start_time = time.time()
                     while True:
-                        loss, summary = sess.run([cost, merged])
-                        test_writer.add_summary(summary, test_steps)
-                        test_steps += 1
-                        print("test batch loss: %f" % loss)
-                        losses += [loss]
+                        last = time.time()
+                        loss, summary, _ = sess.run([cost, merged, trainer], feed_dict={keep_prob: 0.5})
+                        train_writer.add_summary(summary, steps)
+                        steps += 1
+                        print("cost: %f time: %f" % (loss, time.time() - last), file=outputfile)
+
                 except tf.errors.OutOfRangeError:
-                        print("test loss: %f" % np.mean(losses))
-                        print("test evaluation time: %f" % (time.time() - start_time))
+                    if epoch != 0 and epoch % 50 == 0:
+                        saver.save(sess, global_step=global_steps,
+                                   save_path=os.path.join('model', 'checkpoint'))
+                    losses = []
+                    sess.run(net.iterator.initializer,
+                             feed_dict={net.input_file_placeholder: test_file})
+                    try:
+                        start_time = time.time()
+                        while True:
+                            loss, summary = sess.run([cost, merged])
+                            test_writer.add_summary(summary, test_steps)
+                            test_steps += 1
+                            print("test batch loss: %f" % loss, file=outputfile)
+                            losses += [loss]
+                    except tf.errors.OutOfRangeError:
+                            print("test loss: %f" % np.mean(losses), file=outputfile)
+                            print("test evaluation time: %f" % (time.time() - start_time))
 
