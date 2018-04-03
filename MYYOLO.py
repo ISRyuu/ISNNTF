@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import os
 import time
 from ISNNTF_DS import ConvolutionalLayer
 from ISNNTF_DS import FullyConnectedLayer
@@ -14,219 +15,93 @@ def leaky_relu(x):
 def YOLO_layers(mbs):
     keep_prob = tf.placeholder_with_default(1.0, shape=(), name='dropout_keep_prob')
     layers = []
-    layer_no = 1
 
-    # layer 1
-    with tf.variable_scope("conv%d" % layer_no):
+    with tf.variable_scope("conv1"):
         layers.append([
             ConvolutionalLayer(
-                [mbs, 448, 448, 3],
-                [7, 7, 3, 64],
-                strides=[1, 2, 2, 1],
+                [mbs, 448, 448, 3], [3, 3, 3, 16], activation_fn=leaky_relu
+            ),
+            "conv1/"
+        ])
+    with tf.variable_scope("conv2"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 224, 224, 16], [3, 3, 16, 32], activation_fn=leaky_relu
+            ),
+            "conv2/"
+        ])
+    with tf.variable_scope("conv3"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 112, 112, 32], [3, 3, 32, 64], activation_fn=leaky_relu
+            ),
+            "conv3/"
+        ])
+    with tf.variable_scope("conv4"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 56, 56, 64], [3, 3, 64, 128], activation_fn=leaky_relu
+            ),
+            "conv4/"
+        ])
+    with tf.variable_scope("conv5"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 28, 28, 128], [3, 3, 128, 256], activation_fn=leaky_relu
+            ),
+            "conv5/"
+        ])
+    with tf.variable_scope("conv6"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 14, 14, 256], [3, 3, 256, 512], activation_fn=leaky_relu
+            ),
+            "conv6/"
+        ])
+    with tf.variable_scope("conv7"):
+        layers.append([
+            ConvolutionalLayer(
+                [mbs, 7, 7, 512], [3, 3, 512, 1024], pool_size=None,
                 activation_fn=leaky_relu
             ),
-            "conv%d/" % layer_no
+            "conv7/"
         ])
-    layer_no += 1
-
-    # layer 2
-    with tf.variable_scope("conv%d" % layer_no):
+    with tf.variable_scope("conv8"):
         layers.append([
             ConvolutionalLayer(
-                [mbs, 112, 112, 64],
-                [3, 3, 64, 192],
+                [mbs, 7, 7, 1024], [3, 3, 1024, 1024], pool_size=None,
                 activation_fn=leaky_relu
             ),
-            "conv%d/" % layer_no
+            "conv8/"
         ])
-    layer_no += 1
-
-    # layer 3
-    with tf.variable_scope("conv%d" % layer_no):
+    with tf.variable_scope("conv9"):
         layers.append([
             ConvolutionalLayer(
-                [mbs, 56, 56, 192],
-                [1, 1, 192, 128],
-                pool_size=None,
+                [mbs, 7, 7, 1024], [3, 3, 1024, 1024], pool_size=None,
                 activation_fn=leaky_relu
             ),
-            "conv%d/" % layer_no
+            "conv9/"
         ])
-    layer_no += 1
-
-    # layer 4
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 56, 56, 128],
-                [3, 3, 128, 256],
-                pool_size=None,
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 5
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 56, 56, 256],
-                [1, 1, 256, 256],
-                pool_size=None,
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 6
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 56, 56, 256],
-                [3, 3, 256, 512],
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 7..14
-    for _ in range(4):
-        with tf.variable_scope("conv%d" % layer_no):
-            layers.append([
-                ConvolutionalLayer(
-                    [mbs, 28, 28, 512],
-                    [1, 1, 512, 256],
-                    pool_size=None,
-                    activation_fn=leaky_relu
-                ),
-                "conv%d/" % layer_no
-            ])
-        layer_no += 1
-
-        with tf.variable_scope("conv%d" % layer_no):
-            layers.append([
-                ConvolutionalLayer(
-                    [mbs, 28, 28, 256],
-                    [3, 3, 256, 512],
-                    pool_size=None,
-                    activation_fn=leaky_relu
-                ),
-                "conv%d/" % layer_no
-            ])
-        layer_no += 1
-
-    # layer 15
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 28, 28, 512],
-                [1, 1, 512, 512],
-                pool_size=None,
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 16
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 28, 28, 512],
-                [3, 3, 512, 1024],
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 17..20
-    for _ in range(2):
-        with tf.variable_scope("conv%d" % layer_no):
-            layers.append([
-                ConvolutionalLayer(
-                    [mbs, 14, 14, 1024],
-                    [1, 1, 1024, 512],
-                    pool_size=None,
-                    activation_fn=leaky_relu
-                ),
-                "conv%d/" % layer_no
-            ])
-        layer_no += 1
-
-        with tf.variable_scope("conv%d" % layer_no):
-            layers.append([
-                ConvolutionalLayer(
-                    [mbs, 14, 14, 512],
-                    [3, 3, 512, 1024],
-                    pool_size=None,
-                    activation_fn=leaky_relu
-                ),
-                "conv%d/" % layer_no
-            ])
-        layer_no += 1
-
-    # layer 21
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 14, 14, 1024],
-                [3, 3, 1024, 1024],
-                pool_size=None,
-                activation_fn=leaky_relu
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 22
-    with tf.variable_scope("conv%d" % layer_no):
-        layers.append([
-            ConvolutionalLayer(
-                [mbs, 14, 14, 1024],
-                [3, 3, 1024, 1024],
-                strides=[1, 2, 2, 1],
-                pool_size=None,
-                activation_fn=leaky_relu,
-            ),
-            "conv%d/" % layer_no
-        ])
-    layer_no += 1
-
-    # layer 23..24
-    for _ in range(2):
-        with tf.variable_scope("conv%d" % layer_no):
-            layers.append([
-                ConvolutionalLayer(
-                    [mbs, 7, 7, 1024],
-                    [3, 3, 1024, 1024],
-                    pool_size=None,
-                    activation_fn=leaky_relu
-                ),
-                "conv%d/" % layer_no
-            ])
-        layer_no += 1
-
-    # layer 25
-    with tf.variable_scope("conn%d" % layer_no):
+    with tf.variable_scope("conn10"):
         layers.append([
             FullyConnectedLayer(
-                7*7*1024, 4096, activation_fn=leaky_relu, keep_prob=keep_prob
+                7*7*1024, 256, activation_fn=leaky_relu,
             ),
-            "conn%d/" % layer_no
+            "conn10/"
         ])
-    layer_no += 1
-
-    # layer 26
-    with tf.variable_scope("conn%d" % layer_no):
+    with tf.variable_scope("conn11"):
+        layers.append([
+            FullyConnectedLayer(
+                256, 4096, activation_fn=None, keep_prob=keep_prob
+            ),
+            "conn11/"
+        ])
+    with tf.variable_scope("conn12"):
         layers.append([
             FullyConnectedLayer(
                 4096, 7*7*30, activation_fn=None
             ),
-            "conn%d/" % layer_no
+            "conn12/"
         ])
 
     return layers, keep_prob
@@ -410,12 +285,11 @@ class MYYOLO(object):
 
 
 if __name__ == '__main__':
-    mbs = 1
+    mbs = 32*2
     layers, keep_prob = YOLO_layers(mbs)
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
     net = ISTFNN(layers, mbs, parser, buffer_mbs=10)
 
-    training_file = "voc2007_dummy.gz"    
     training_file = "voc2007.tfrecords.gz"
     test_file = "voc2007test.tfrecords.gz"
 
@@ -437,7 +311,7 @@ if __name__ == '__main__':
         merged = tf.summary.merge_all()
         train_writer = tf.summary.FileWriter('training_log', graph=sess.graph)
         test_writer = tf.summary.FileWriter('test_log')
-        
+
         sess.run(init)
         steps = 0
         test_steps = 0

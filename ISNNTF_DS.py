@@ -62,7 +62,7 @@ class ISNNLayer(object):
 
 class ISTFNN(object):
 
-    def __init__(self, layers, mini_batch_size, parse_func, buffer_mbs=100):
+    def __init__(self, layers, mini_batch_size, parse_func, buffer_mbs=10):
         '''
         :param parse_func: use as the parameter of dataset.map(), the dataset
          structure should be like
@@ -95,7 +95,7 @@ class ISTFNN(object):
             data = self.iterator.get_next()
             self.x = data[0]
             self.y = data[1]
-            self.x = tf.random_uniform([self.mbs, 448*448*3])
+#            self.x = tf.random_uniform([self.mbs, 448*448*3])
 #            self.y = tf.random_uniform([self.mbs, 7*7*25])
             
         with tf.variable_scope(self.scopes[0]):
@@ -266,7 +266,7 @@ class FullyConnectedLayer(ISNNLayer):
         self._size_out = size_out
         self._activation_fn = activation_fn
         self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=(self._size_in, self._size_out),
-                                                       stddev=1.0/self._size_in), dtype=tf.float32)
+                                                                                   stddev=0.01), dtype=tf.float32)
         self._biases = tf.get_variable('biases', initializer=tf.constant_initializer(0.1),
                                        shape=self._size_out, dtype=tf.float32)
 
@@ -318,7 +318,7 @@ class ConvolutionalLayer(ISNNLayer):
         self._pool_size = pool_size
         self._activation_fn = activation_fn
         self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=self._filter_shape,
-                                                        stddev=1.0/np.prod(filter_shape[:-1]),
+                                                        stddev=0.01,
                                                         dtype=tf.float32))
         self._biases = tf.get_variable('biases', initializer=tf.constant_initializer(0.1),
                                        shape=self._filter_shape[-1], dtype=tf.float32)
