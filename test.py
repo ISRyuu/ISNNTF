@@ -1,5 +1,4 @@
 import numpy as np
-import time
 
 
 def iou(box_1, box_2):
@@ -27,7 +26,7 @@ def iou(box_1, box_2):
 
 
 def non_max_suppression(output, cell_size, class_num, boxes_per_cell,
-                        threshold=0.2, iou_threshold=0.5):
+                        threshold=0.1, iou_threshold=0.5):
     '''output [cell_size, cell_size, boxes_per_cell, values]'''
     offset_y = np.reshape(
         np.asarray([np.arange(cell_size)]*cell_size*boxes_per_cell).T,
@@ -51,9 +50,10 @@ def non_max_suppression(output, cell_size, class_num, boxes_per_cell,
     for i in range(boxes_per_cell):
         class_confidences += [np.expand_dims(confidences[..., i], axis=-1) * classes]
     class_confidences = np.stack(class_confidences, axis=-2)
-
+    
     class_filter = class_confidences >= threshold
     class_filtered_indices = np.nonzero(class_filter)
+
     boxes_filtered = boxes[class_filtered_indices[0:3]]
     class_filtered = np.argmax(class_confidences, axis=-1)[class_filtered_indices[0:3]]
     probabilites_filtered = class_confidences[class_filter]
@@ -82,8 +82,8 @@ def non_max_suppression(output, cell_size, class_num, boxes_per_cell,
 
 
 if __name__ == '__main__':
-    test_data = np.abs(np.random.randn(7, 7, 30))
-    non_max_suppression(test_data, 7, 20, 2)
+    test_data = np.reshape(np.load("/Users/Kevin/Desktop/out.npy")[2], [7, 7, 30])
+    print(non_max_suppression(test_data, 7, 20, 2))
 
     # confidences = np.random.randn(3,3,2)
     # classes = np.random.randn(3,3,20)

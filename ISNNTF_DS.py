@@ -95,7 +95,9 @@ class ISTFNN(object):
             data = self.iterator.get_next()
             self.x = data[0]
             self.y = data[1]
-                
+            self.x = tf.random_uniform([self.mbs, 448*448*3])
+#            self.y = tf.random_uniform([self.mbs, 7*7*25])
+            
         with tf.variable_scope(self.scopes[0]):
             self.layers[0].input(self.x, self.mbs, self.keep_prob)
         i = 1
