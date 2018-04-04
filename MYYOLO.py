@@ -6,14 +6,53 @@ from ISNNTF_DS import ConvolutionalLayer
 from ISNNTF_DS import FullyConnectedLayer
 from ISNNTF_DS import ISTFNN
 from TFRConverter import VOC_TFRecords
-
+import tensorflow.contrib.slim as slim
+from yolo.yolo_net import YOLONet
 
 def leaky_relu(x):
     return tf.nn.leaky_relu(x, alpha=0.1)
 
 
-def YOLO_layers(mbs):
+def YOLO_layers(mbs, inp):
     keep_prob = tf.placeholder_with_default(1.0, shape=(), name='dropout_keep_prob')
+    with slim.arg_scope(
+                [slim.conv2d, slim.fully_connected],
+                activation_fn=leaky_relu,
+                weights_regularizer=slim.l2_regularizer(0.005),
+                weights_initializer=tf.truncated_normal_initializer(0.0, 0.01)
+            ):
+        net = slim.conv2d(inp, 16, 3, scope='conv_1')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_1')
+
+        # net = slim.conv2d(net, 32, 3, scope='conv_2')
+        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_2')
+
+        # net = slim.conv2d(net, 64, 3, scope='conv_3')
+        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_3')
+
+        # net = slim.conv2d(net, 128, 3, scope='conv_4')
+        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_4')
+
+        # net = slim.conv2d(net, 256, 3, scope='conv_5')
+        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_5')
+
+        # net = slim.conv2d(net, 512, 3, scope='conv_6')
+        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_6')
+
+        # net = slim.conv2d(net, 1024, 3, scope='conv_7')
+        # net = slim.conv2d(net, 1024, 3, scope='conv_8')
+        # net = slim.conv2d(net, 1024, 3, scope='conv_9')
+        net = slim.flatten(net, scope='flat_32')
+        net = slim.fully_connected(net, 256, scope='fc_10')
+        net = slim.fully_connected(net, 4096, scope='fc_34', activation_fn=None)
+
+        net = slim.dropout(
+            net, keep_prob=keep_prob,
+            scope='dropout_35')
+        net = slim.fully_connected(
+            net, 7*7*30, activation_fn=None, scope='fc_36')
+    return net, keep_prob
+
     layers = []
 
     with tf.variable_scope("conv1"):
@@ -85,14 +124,14 @@ def YOLO_layers(mbs):
     with tf.variable_scope("conn10"):
         layers.append([
             FullyConnectedLayer(
-                7*7*1024, 256, activation_fn=leaky_relu,
+                7*7*1024, 256, activation_fn=None,
             ),
             "conn10/"
         ])
     with tf.variable_scope("conn11"):
         layers.append([
             FullyConnectedLayer(
-                256, 4096, activation_fn=None, keep_prob=keep_prob
+                256, 4096, activation_fn=leaky_relu, keep_prob=keep_prob
             ),
             "conn11/"
         ])
@@ -122,7 +161,6 @@ class MYYOLO(object):
 
     def loss_layer(self, predictions, gbox):
         with tf.variable_scope("loss"):
-            predictions = tf.reshape(predictions, [self.mbs, self.cell_size, self.cell_size, -1])
             gbox = tf.reshape(gbox, [self.mbs, self.cell_size, self.cell_size, -1])
 
             label = gbox[..., :self.classes]
@@ -137,13 +175,18 @@ class MYYOLO(object):
                 gbox[..., self.classes+1:],
                 [self.mbs, self.cell_size, self.cell_size, 1, 4]) / self.img_size
 
-            p_labels = predictions[..., :self.classes]
+            p_labels = tf.reshape(
+                predictions[:, :self.classes*self.cell_size*self.cell_size],
+                [self.mbs, self.cell_size, self.cell_size, -1]
+            )
+            c_begin = self.cell_size * self.cell_size * self.classes
+            c_end = self.cell_size * self.cell_size * (self.classes + self.predict_boxes)
             p_confidences = tf.reshape(
-                predictions[..., self.classes:self.classes+self.predict_boxes],
+                predictions[:, c_begin:c_end],
                 [self.mbs, self.cell_size, self.cell_size, self.predict_boxes])
 
             p_boxes = tf.reshape(
-                predictions[..., self.classes+self.predict_boxes:],
+                predictions[..., c_end:],
                 [self.mbs, self.cell_size, self.cell_size, self.predict_boxes, 4])
 
             # repeat gtb to fit predictions
@@ -285,20 +328,21 @@ class MYYOLO(object):
 
 
 if __name__ == '__main__':
-    mbs = 32*2
-    layers, keep_prob = YOLO_layers(mbs)
+    mbs = 3
+#    layers, keep_prob = YOLO_layers(mbs)
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
-    net = ISTFNN(layers, mbs, parser, buffer_mbs=10)
-
-    training_file = "voc2007.tfrecords.gz"
+    net = ISTFNN([], mbs, parser, buffer_mbs=10)
+    out, keep_prob = YOLO_layers(1, net.x)
+    training_file = "voc2007_dummy.gz"
     test_file = "voc2007test.tfrecords.gz"
 
     global_steps = tf.Variable(0, tf.int32, name='steps')
-    
+
     yolo = MYYOLO(448, mbs, 20, 7, 2)
-    optimizer = tf.train.AdamOptimizer(0.00001)
-    cost = yolo.loss_layer(net.output, net.y)
-    trainer = optimizer.minimize(cost, global_step=global_steps)
+#    yolo = YOLONet()
+    optimizer = tf.train.AdamOptimizer(0.0001)
+    cost = yolo.loss_layer(out, net.y)
+    trainer = optimizer.minimize(tf.reduce_sum(cost), global_step=global_steps)
 
     saver = tf.train.Saver()
 
@@ -322,12 +366,22 @@ if __name__ == '__main__':
                 try:
                     while True:
                         last = time.time()
-                        loss, summary, _ = sess.run([cost, merged, trainer], feed_dict={keep_prob: 0.5})
-                        train_writer.add_summary(summary, steps)
+                        loss, summary = sess.run([cost, trainer], feed_dict={keep_prob: 0.5})
+#                        train_writer.add_summary(summary, steps)
                         steps += 1
                         print("cost: %f time: %f" % (loss, time.time() - last))#, file=outputfile)
 
                 except tf.errors.OutOfRangeError:
+                    print(epoch)
+                    if epoch == 99:
+                        sess.run(net.iterator.initializer,
+                                 feed_dict={net.input_file_placeholder: training_file})
+                        cost_t, outp, img, tbox = sess.run([cost, out, net.x, net.y])
+                        print("cost t", cost_t)
+                        np.save("save", outp)
+                        np.save("img", img)
+                        np.save("true", tbox)
+                        exit(0)
                     continue
                     if epoch != 0 and epoch % 50 == 0:
                         saver.save(sess, global_step=global_steps,

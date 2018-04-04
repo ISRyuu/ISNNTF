@@ -71,7 +71,7 @@ class ISTFNN(object):
         :param scopes: scope name for each layer.
         '''
         self.scoped_layers = layers
-        self.layers, self.scopes = zip(*self.scoped_layers)
+#        self.layers, self.scopes = zip(*self.scoped_layers)
         self.parse_func = parse_func
         self.mbs = mini_batch_size
 
@@ -97,7 +97,7 @@ class ISTFNN(object):
             self.y = data[1]
 #            self.x = tf.random_uniform([self.mbs, 448*448*3])
 #            self.y = tf.random_uniform([self.mbs, 7*7*25])
-            
+        return
         with tf.variable_scope(self.scopes[0]):
             self.layers[0].input(self.x, self.mbs, self.keep_prob)
         i = 1
@@ -405,8 +405,8 @@ if __name__ == '__main__':
     with tf.variable_scope('conv'):
         layers.append([ConvolutionalLayer([mbs, 32, 32, 3], [5, 5, 3, 50]), "conv/"])
 
-    # with tf.variable_scope('conv2'):
-    #     layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
+    with tf.variable_scope('conv2'):
+        layers.append(ConvolutionalLayer([mbs, 12, 12, 100], [3, 3, 100, 100]))
 
     with tf.variable_scope('fully'):
         layers.append([FullyConnectedLayer(16*16*50, 100), "fully/"])
@@ -416,7 +416,7 @@ if __name__ == '__main__':
 
     # add a slash to re enter scope. that's not a reliable but the only way.
     network = ISTFNN(layers, mbs, parse_function_maker(img_shape, one_hot))
-    #                 ['conv/', 'conv2', 'fully/', 'softmax/'])
+#                     ['conv/', 'conv2', 'fully/', 'softmax/'])
 
-    network.train(eta=0.1, lambd=0, epochs=epochs, period=50000/mbs,
+    network.train(eta=0.1, lambd=0, epochs=epochs, period=50000/mbs, optimizer=tf.train.AdamOptimizer,
                   training_file=training_file, validation_file=validation_file, test_file=test_file)

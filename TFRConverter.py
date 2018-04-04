@@ -63,6 +63,7 @@ class VOC_TFRecords(object):
             max = tf.reduce_max(image)
             min = tf.reduce_min(image)
             image = tf.div(tf.subtract(image, min), tf.subtract(max, min))
+#            image = image / 255 * 2.0 - 1.0
             image.set_shape(np.prod(shape_img))
             image = tf.reshape(image, shape_img)
             
