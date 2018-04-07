@@ -265,8 +265,7 @@ class FullyConnectedLayer(ISNNLayer):
         self._keep_prob = keep_prob
         self._size_out = size_out
         self._activation_fn = activation_fn
-        self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=(self._size_in, self._size_out),
-                                                                                   stddev=0.01), dtype=tf.float32)
+        self._weights = tf.get_variable('weights', initializer=tf.keras.initializers.he_normal(), dtype=tf.float32)
         self._biases = tf.get_variable('biases', initializer=tf.constant_initializer(0.1),
                                        shape=self._size_out, dtype=tf.float32)
 
@@ -317,9 +316,8 @@ class ConvolutionalLayer(ISNNLayer):
         self._filter_shape = filter_shape
         self._pool_size = pool_size
         self._activation_fn = activation_fn
-        self._weights = tf.get_variable('weights', initializer=tf.truncated_normal(shape=self._filter_shape,
-                                                        stddev=0.01,
-                                                        dtype=tf.float32))
+        self._weights = tf.get_variable('weights', initializer=tf.keras.initializers.he_normal(),
+                                        dtype=tf.float32)
         self._biases = tf.get_variable('biases', initializer=tf.constant_initializer(0.1),
                                        shape=self._filter_shape[-1], dtype=tf.float32)
 

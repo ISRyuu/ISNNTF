@@ -7,7 +7,7 @@ from ISNNTF_DS import FullyConnectedLayer
 from ISNNTF_DS import ISTFNN
 from TFRConverter import VOC_TFRecords
 import tensorflow.contrib.slim as slim
-from yolo.yolo_net import YOLONet
+
 
 def leaky_relu(x):
     return tf.nn.leaky_relu(x, alpha=0.1)
@@ -18,28 +18,29 @@ def YOLO_layers(mbs, inp):
     with slim.arg_scope(
                 [slim.conv2d, slim.fully_connected],
                 activation_fn=leaky_relu,
-                weights_regularizer=slim.l2_regularizer(0.005),
-                weights_initializer=tf.truncated_normal_initializer(0.0, 0.01)
+                weights_regularizer=slim.l2_regularizer(0.0005),
+                weights_initializer=tf.keras.initializers.he_normal()
             ):
         net = slim.conv2d(inp, 16, 3, scope='conv_1')
         net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_1')
 
-        # net = slim.conv2d(net, 32, 3, scope='conv_2')
-        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_2')
+        net = slim.conv2d(net, 32, 3, scope='conv_2')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_2')
 
-        # net = slim.conv2d(net, 64, 3, scope='conv_3')
-        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_3')
+        net = slim.conv2d(net, 64, 3, scope='conv_3')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_3')
 
-        # net = slim.conv2d(net, 128, 3, scope='conv_4')
-        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_4')
+        net = slim.conv2d(net, 128, 3, scope='conv_4')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_4')
 
-        # net = slim.conv2d(net, 256, 3, scope='conv_5')
-        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_5')
+        net = slim.conv2d(net, 256, 3, scope='conv_5')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_5')
 
-        # net = slim.conv2d(net, 512, 3, scope='conv_6')
-        # net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_6')
+        net = slim.conv2d(net, 512, 3, scope='conv_6')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_6')
 
-        # net = slim.conv2d(net, 1024, 3, scope='conv_7')
+        net = slim.conv2d(net, 1024, 3, scope='conv_7')
+#        net = slim.conv2d(net, 256, 3, scope='conv_8')        
         # net = slim.conv2d(net, 1024, 3, scope='conv_8')
         # net = slim.conv2d(net, 1024, 3, scope='conv_9')
         net = slim.flatten(net, scope='flat_32')
@@ -47,10 +48,10 @@ def YOLO_layers(mbs, inp):
         net = slim.fully_connected(net, 4096, scope='fc_34', activation_fn=None)
 
         net = slim.dropout(
-            net, keep_prob=keep_prob,
-            scope='dropout_35')
+             net, keep_prob=keep_prob,
+             scope='dropout_35')
         net = slim.fully_connected(
-            net, 7*7*30, activation_fn=None, scope='fc_36')
+             net, 7*7*30, activation_fn=None, scope='fc_36')
     return net, keep_prob
 
     layers = []
@@ -328,12 +329,12 @@ class MYYOLO(object):
 
 
 if __name__ == '__main__':
-    mbs = 3
+    mbs = 64
 #    layers, keep_prob = YOLO_layers(mbs)
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
     net = ISTFNN([], mbs, parser, buffer_mbs=10)
     out, keep_prob = YOLO_layers(1, net.x)
-    training_file = "voc2007_dummy.gz"
+    training_file = "voc2007.tfrecords.gz"
     test_file = "voc2007test.tfrecords.gz"
 
     global_steps = tf.Variable(0, tf.int32, name='steps')
