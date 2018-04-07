@@ -18,40 +18,40 @@ def YOLO_layers(mbs, inp):
     with slim.arg_scope(
                 [slim.conv2d, slim.fully_connected],
                 activation_fn=leaky_relu,
-                weights_regularizer=slim.l2_regularizer(0.0005),
+                weights_regularizer=slim.l2_regularizer(0.001),
                 weights_initializer=tf.keras.initializers.he_normal()
             ):
-        net = slim.conv2d(inp, 16, 3, scope='conv_1')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_1')
+        net = slim.conv2d(inp, 16, 3, scope='conv1')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool1')
 
-        net = slim.conv2d(net, 32, 3, scope='conv_2')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_2')
+        net = slim.conv2d(net, 32, 3, scope='conv2')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool2')
 
-        net = slim.conv2d(net, 64, 3, scope='conv_3')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_3')
+        net = slim.conv2d(net, 64, 3, scope='conv3')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool3')
 
-        net = slim.conv2d(net, 128, 3, scope='conv_4')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_4')
+        net = slim.conv2d(net, 128, 3, scope='conv4')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool4')
 
-        net = slim.conv2d(net, 256, 3, scope='conv_5')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_5')
+        net = slim.conv2d(net, 256, 3, scope='conv5')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool5')
 
-        net = slim.conv2d(net, 512, 3, scope='conv_6')
-        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_6')
+        net = slim.conv2d(net, 512, 3, scope='conv6')
+        net = slim.max_pool2d(net, 2, padding='SAME', scope='pool6')
 
-        net = slim.conv2d(net, 1024, 3, scope='conv_7')
+        net = slim.conv2d(net, 1024, 3, scope='conv7')
 #        net = slim.conv2d(net, 256, 3, scope='conv_8')        
-        # net = slim.conv2d(net, 1024, 3, scope='conv_8')
-        # net = slim.conv2d(net, 1024, 3, scope='conv_9')
-        net = slim.flatten(net, scope='flat_32')
-        net = slim.fully_connected(net, 256, scope='fc_10')
-        net = slim.fully_connected(net, 4096, scope='fc_34', activation_fn=None)
+        net = slim.conv2d(net, 1024, 3, scope='conv_8')
+        net = slim.conv2d(net, 1024, 3, scope='conv_9')
+        net = slim.flatten(net, scope='flatten0')
+        net = slim.fully_connected(net, 256, scope='fc1')
+        net = slim.fully_connected(net, 4096, scope='fc2', activation_fn=None)
 
         net = slim.dropout(
              net, keep_prob=keep_prob,
-             scope='dropout_35')
+             scope='dropout0')
         net = slim.fully_connected(
-             net, 7*7*30, activation_fn=None, scope='fc_36')
+             net, 7*7*30, activation_fn=None, scope='fc3')
     return net, keep_prob
 
     layers = []
@@ -334,15 +334,16 @@ if __name__ == '__main__':
     parser = VOC_TFRecords.parse_function_maker([448, 448, 3], [7, 7, 25])
     net = ISTFNN([], mbs, parser, buffer_mbs=10)
     out, keep_prob = YOLO_layers(1, net.x)
-    training_file = "voc2007.tfrecords.gz"
+    training_file = "voc2012.gz"
     test_file = "voc2007test.tfrecords.gz"
 
     global_steps = tf.Variable(0, tf.int32, name='steps')
 
     yolo = MYYOLO(448, mbs, 20, 7, 2)
-#    yolo = YOLONet()
     optimizer = tf.train.AdamOptimizer(0.0001)
-    cost = yolo.loss_layer(out, net.y)
+    cost_test = yolo.loss_layer(out, net.y)
+    cost = cost_test + tf.add_n(tf.losses.get_regularization_losses())
+    tf.summary.scalar('loss_with_l2_reg', cost)
     trainer = optimizer.minimize(tf.reduce_sum(cost), global_step=global_steps)
 
     saver = tf.train.Saver()
@@ -352,7 +353,6 @@ if __name__ == '__main__':
     config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
-#        sess = tf_debug.TensorBoardDebugWrapperSession(sess, 'localhost:6064')
         merged = tf.summary.merge_all()
         train_writer = tf.summary.FileWriter('training_log', graph=sess.graph)
         test_writer = tf.summary.FileWriter('test_log')
@@ -367,24 +367,24 @@ if __name__ == '__main__':
                 try:
                     while True:
                         last = time.time()
-                        loss, summary = sess.run([cost, trainer], feed_dict={keep_prob: 0.5})
-#                        train_writer.add_summary(summary, steps)
+                        loss, summary, _ = sess.run([cost, merged, trainer], feed_dict={keep_prob: 0.5})
+                        train_writer.add_summary(summary, steps)
                         steps += 1
-                        print("cost: %f time: %f" % (loss, time.time() - last))#, file=outputfile)
-
+                        print("cost: %f time: %f" % (loss, time.time() - last), file=outputfile)
+                        outputfile.flush()
                 except tf.errors.OutOfRangeError:
-                    print(epoch)
-                    if epoch == 99:
-                        sess.run(net.iterator.initializer,
-                                 feed_dict={net.input_file_placeholder: training_file})
-                        cost_t, outp, img, tbox = sess.run([cost, out, net.x, net.y])
-                        print("cost t", cost_t)
-                        np.save("save", outp)
-                        np.save("img", img)
-                        np.save("true", tbox)
-                        exit(0)
-                    continue
-                    if epoch != 0 and epoch % 50 == 0:
+                    print(epoch, file=outputfile)
+                    # if epoch == 99:
+                    #     sess.run(net.iterator.initializer,
+                    #              feed_dict={net.input_file_placeholder: training_file})
+                    #     cost_t, outp, img, tbox = sess.run([cost, out, net.x, net.y])
+                    #     print("cost t", cost_t)
+                    #     np.save("save", outp)
+                    #     np.save("img", img)
+                    #     np.save("true", tbox)
+                    #     exit(0)
+                    # continue
+                    if (epoch+1) % 30 == 0 or epoch == 99:
                         saver.save(sess, global_step=global_steps,
                                    save_path=os.path.join('model', 'checkpoint'))
                     losses = []
@@ -393,10 +393,11 @@ if __name__ == '__main__':
                     try:
                         start_time = time.time()
                         while True:
-                            loss, summary = sess.run([cost, merged])
+                            loss, summary = sess.run([cost_test, merged])
                             test_writer.add_summary(summary, test_steps)
                             test_steps += 1
                             print("test batch loss: %f" % loss, file=outputfile)
+                            outputfile.flush()
                             losses += [loss]
                     except tf.errors.OutOfRangeError:
                             print("test loss: %f" % np.mean(losses), file=outputfile)

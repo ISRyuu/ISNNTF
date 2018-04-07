@@ -24,8 +24,8 @@ class DataUtility(object):
                 image_dir = os.path.join(data_dir, "JPEGImages")
                 anno_dir = os.path.join(data_dir, "Annotations")
                 count = 0
-                cv2.namedWindow("Test", cv2.WINDOW_AUTOSIZE)
-                cv2.namedWindow("Test2", cv2.WINDOW_AUTOSIZE)                
+#                cv2.namedWindow("Test", cv2.WINDOW_AUTOSIZE)
+#                cv2.namedWindow("Test2", cv2.WINDOW_AUTOSIZE)                
                 for filename in os.listdir(image_dir):
                     if not filename.endswith(".jpg"):
                         continue
@@ -43,9 +43,11 @@ class DataUtility(object):
                     # data augmentation
                     image, annotations = self.augment(image, annotations)
 
-                    count += 1
+                    count += 1                    
                     voc_tf.add_example(image, annotations)
                     sys.stdout.write("%d %s\r" % (count, filename))
+                    if count >= 30000:
+                        break
             print("%d images processed" % total)
 
     def process_boxes(self, boxes):
